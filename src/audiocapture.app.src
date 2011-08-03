@@ -1,0 +1,12 @@
+{application, audiocapture,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { audiocapture_app, []}},
+  {env, []}
+ ]}.
