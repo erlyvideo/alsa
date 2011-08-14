@@ -1,4 +1,4 @@
--module(audiocapture).
+-module(alsa).
 
 -on_load(load_nif/0).
 -export([start/2, stop/1, load_nif/0]).
@@ -8,7 +8,7 @@ load_nif() ->
     {error, _} -> "priv";
     Else -> Else
   end,
-  erlang:load_nif(Path ++ "/audiocapture", 0).
+  erlang:load_nif(Path ++ "/alsa", 0).
 
 
 start(Rate, Channels) ->

@@ -35,11 +35,11 @@ typedef struct
 } AudioCapture;
 
 
-ErlNifResourceType* audiocapture_resource;
+ErlNifResourceType* alsa_resource;
 
 
 static void
-audiocapture_destructor(ErlNifEnv* env, void* obj)
+alsa_destructor(ErlNifEnv* env, void* obj)
 {
   AudioCapture *capture = (AudioCapture *)obj;
   fprintf(stderr, "Hm, dealloc: %s\r\n", capture->pcm_name);
@@ -48,7 +48,7 @@ audiocapture_destructor(ErlNifEnv* env, void* obj)
 static int
 load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
 {
-  audiocapture_resource = enif_open_resource_type(env, NULL, "audiocapture_resource", audiocapture_destructor, ERL_NIF_RT_CREATE, NULL);
+  alsa_resource = enif_open_resource_type(env, NULL, "alsa_resource", alsa_destructor, ERL_NIF_RT_CREATE, NULL);
   return 0;
 }
 
@@ -122,7 +122,7 @@ void *capture_thread(void *data) {
     
     enif_send(NULL, &capture->owner_pid, env, 
       enif_make_tuple4(env,
-        enif_make_atom(env, "audiocapture"),
+        enif_make_atom(env, "alsa"),
         enif_make_resource(env, capture),
         enif_make_uint(env, dts),
         enif_make_binary(env, &frame)
@@ -172,7 +172,7 @@ char *detect_pcm() {
 }
 
 static ERL_NIF_TERM
-audiocapture_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+alsa_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   int selectedDevice, sample_rate, channels;
   
@@ -181,7 +181,7 @@ audiocapture_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
   // selectedDevice = dump_audio_info(selectedDevice);
 
-  AudioCapture *capture = (AudioCapture *)enif_alloc_resource(audiocapture_resource, sizeof(AudioCapture));
+  AudioCapture *capture = (AudioCapture *)enif_alloc_resource(alsa_resource, sizeof(AudioCapture));
   bzero(capture, sizeof(AudioCapture));
 
   capture->sample_rate = sample_rate;
@@ -192,10 +192,10 @@ audiocapture_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
   enif_self(env, &capture->owner_pid);
   capture->env = enif_alloc_env();
   
-  fprintf(stderr, "Starting audiocapture %d\r\n", capture->sample_rate);
+  fprintf(stderr, "Starting alsa %d\r\n", capture->sample_rate);
   
   capture->thread_started = 1;
-  enif_thread_create("audiocapture_thread", &capture->tid, capture_thread, capture, NULL);
+  enif_thread_create("alsa_thread", &capture->tid, capture_thread, capture, NULL);
   
   ERL_NIF_TERM port = enif_make_resource(env, capture);
   capture->port = enif_make_copy(capture->env, port);
@@ -204,9 +204,9 @@ audiocapture_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 
-static ErlNifFunc audiocapture_funcs[] =
+static ErlNifFunc alsa_funcs[] =
 {
-    {"real_start", 2, audiocapture_init}
+    {"real_start", 2, alsa_init}
 };
 
-ERL_NIF_INIT(audiocapture, audiocapture_funcs, load, 0, 0, 0)
+ERL_NIF_INIT(alsa, alsa_funcs, load, 0, 0, 0)
