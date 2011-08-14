@@ -1,22 +1,21 @@
 -module(audiocapture).
 
--export([start/3, stop/1]).
+-on_load(load_nif/0).
+-export([start/2, stop/1, load_nif/0]).
 
-
-start(Device, Rate, Channels) ->
+load_nif() ->
   Path = case code:lib_dir(?MODULE,priv) of
     {error, _} -> "priv";
     Else -> Else
   end,
-  case erl_ddll:load_driver(Path, audiocapture_drv) of
-  	ok -> ok;
-  	{error, already_loaded} -> ok;
-  	{error, Error} -> exit({error, {could_not_load_driver,erl_ddll:format_error(Error)}})
-  end,
-  Capture = open_port({spawn, audiocapture_drv}, [binary]),
+  erlang:load_nif(Path ++ "/audiocapture", 0).
 
-  <<"ok">> = port_control(Capture, 1, <<Device, Channels, Rate:16>>),
+
+start(Rate, Channels) ->
+  Capture = real_start(Rate, Channels),
   {ok, Capture}.
+
+real_start(Rate, Channels) -> erlang:error(nif_not_loaded).
 
 stop(_Capture) ->
   erlang:error(not_implemented).
