@@ -102,8 +102,8 @@ void *capture_thread(void *data) {
   int size = 0;
   
   while(capture->thread_started) {
-    int r = snd_pcm_readi(capture->handle, buffer + size, 2048);
-    size += r*2;
+    int r = snd_pcm_readi(capture->handle, buffer + size, 1024);
+    size += r*2*capture->channels;
     if(size < capture->frame_size) {
       continue;
     }
