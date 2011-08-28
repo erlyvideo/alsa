@@ -32,6 +32,8 @@ typedef struct
     ERL_NIF_TERM port;
     ErlNifEnv* env;
     int thread_started;
+    
+    ErlNifUInt64 last_dts;
 } AudioCapture;
 
 
@@ -85,6 +87,8 @@ void *capture_thread(void *data) {
   //  snd_pcm_hw_params_set_buffer_size_near(capture->handle, hw_params, &buffer_size);
   //  
 	
+  capture->last_dts = 0;
+  
   fprintf(stderr, "Setting params: %p, %p\r\n", capture->handle, hw_params);
   
   snd_pcm_hw_params(capture->handle, hw_params);
@@ -116,15 +120,19 @@ void *capture_thread(void *data) {
     size -= frame.size;
     memmove(buffer, buffer + frame.size, size);
     
-    uint32_t dts = capture->counter*1024*1000 / capture->sample_rate;
+    ErlNifUInt64 dts = (uint64_t)capture->counter*1024ULL*1000 / capture->sample_rate;
     
     // fprintf(stderr, "A: %d -> %d\r\n", capture->counter, dts);
     
+    if(capture->last_dts > dts) {
+      fprintf(stderr, "Achtung! ALSA audio jump: %u, %u, %u\r\n", capture->counter, (unsigned long)capture->last_dts, (unsigned long)dts);
+    }
+    capture->last_dts = dts;
     enif_send(NULL, &capture->owner_pid, env, 
       enif_make_tuple4(env,
         enif_make_atom(env, "alsa"),
         enif_make_resource(env, capture),
-        enif_make_uint(env, dts),
+        enif_make_uint64(env, dts),
         enif_make_binary(env, &frame)
       )
     );
