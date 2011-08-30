@@ -44,13 +44,17 @@ static void
 alsa_destructor(ErlNifEnv* env, void* obj)
 {
   AudioCapture *capture = (AudioCapture *)obj;
+  if(capture->thread_started) {
+    capture->thread_started = 0;
+    enif_thread_join(capture->tid, NULL);
+  }
   fprintf(stderr, "Hm, dealloc: %s\r\n", capture->pcm_name);
 }
 
 static int
 load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
 {
-  alsa_resource = enif_open_resource_type(env, NULL, "alsa_resource", alsa_destructor, ERL_NIF_RT_CREATE, NULL);
+  alsa_resource = enif_open_resource_type(env, NULL, "alsa_resource", alsa_destructor, ERL_NIF_RT_CREATE|ERL_NIF_RT_TAKEOVER, NULL);
   return 0;
 }
 
@@ -58,7 +62,7 @@ load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
 
 void *capture_thread(void *data) {
   AudioCapture *capture = (AudioCapture *)data;
-  enif_keep_resource(capture);
+  // enif_keep_resource(capture);
   
   capture->pcm_name = detect_pcm();
   snd_pcm_open(&capture->handle, capture->pcm_name, SND_PCM_STREAM_CAPTURE, 0);
@@ -79,9 +83,9 @@ void *capture_thread(void *data) {
   snd_pcm_hw_params_set_rate_near(capture->handle, hw_params, &capture->sample_rate, 0);
   snd_pcm_hw_params_set_channels(capture->handle, hw_params, capture->channels);
   
-  int buffer_size = 16384;
-	int period_time = 32000;
-  int period_size = 1024;
+  // int buffer_size = 16384;
+  // int period_time = 32000;
+  // int period_size = 1024;
   // snd_pcm_hw_params_set_period_time_near(capture->handle, hw_params, &period_time, 0);
   // snd_pcm_hw_params_set_period_size_near(capture->handle, hw_params, &period_size, 0);
   //  snd_pcm_hw_params_set_buffer_size_near(capture->handle, hw_params, &buffer_size);
@@ -102,7 +106,7 @@ void *capture_thread(void *data) {
   fprintf(stderr, "Started capture\r\n");
   char *buffer = (char *)malloc(8192);
   
-  char *ptr = buffer;
+  // char *ptr = buffer;
   int size = 0;
   
   while(capture->thread_started) {
@@ -125,7 +129,7 @@ void *capture_thread(void *data) {
     // fprintf(stderr, "A: %d -> %d\r\n", capture->counter, dts);
     
     if(capture->last_dts > dts) {
-      fprintf(stderr, "Achtung! ALSA audio jump: %u, %u, %u\r\n", capture->counter, (unsigned long)capture->last_dts, (unsigned long)dts);
+      fprintf(stderr, "Achtung! ALSA audio jump: %u, %u, %u\r\n", (unsigned)capture->counter, (unsigned)capture->last_dts, (unsigned)dts);
     }
     capture->last_dts = dts;
     enif_send(NULL, &capture->owner_pid, env, 
@@ -141,9 +145,9 @@ void *capture_thread(void *data) {
     
     enif_free_env(env);
     capture->counter++;
-    
   }
-  enif_release_resource(capture);
+  fprintf(stderr, "Capture thread stopping\r\n");
+  // enif_release_resource(capture);
   snd_pcm_close(capture->handle);
   return 0;
 }
@@ -182,7 +186,7 @@ char *detect_pcm() {
 static ERL_NIF_TERM
 alsa_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-  int selectedDevice, sample_rate, channels;
+  int sample_rate, channels;
   
   enif_get_int(env, argv[0], &sample_rate);
   enif_get_int(env, argv[1], &channels);
@@ -208,13 +212,32 @@ alsa_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
   ERL_NIF_TERM port = enif_make_resource(env, capture);
   capture->port = enif_make_copy(capture->env, port);
 
+  enif_release_resource(capture);
   return port;
+}
+
+static ERL_NIF_TERM
+alsa_stop(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  
+  AudioCapture *capture;
+  
+  if(!enif_get_resource(env, argv[0], alsa_resource, (void **)&capture)) {
+    return enif_make_badarg(env);
+  }
+  
+  if(capture->thread_started) {
+    capture->thread_started = 0;
+    enif_thread_join(capture->tid, NULL);
+  }
+  
+  return enif_make_atom(env, "ok");
 }
 
 
 static ErlNifFunc alsa_funcs[] =
 {
-    {"real_start", 2, alsa_init}
+    {"real_start", 2, alsa_init},
+    {"stop", 1, alsa_stop}
 };
 
 ERL_NIF_INIT(alsa, alsa_funcs, load, 0, 0, 0)
