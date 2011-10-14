@@ -11,7 +11,6 @@
 #include <alsa/asoundlib.h>
 
 
-static char *detect_pcm();
 
 
 typedef struct
@@ -24,6 +23,7 @@ typedef struct
     uint32_t frame_size;
     uint8_t buffer[4096];
     char *pcm_name;
+    int pcm_id;
     snd_pcm_t *handle;
     // int selectedDevice;
     int running;
@@ -39,6 +39,7 @@ typedef struct
 
 ErlNifResourceType* alsa_resource;
 
+static void detect_pcm(AudioCapture *capture);
 
 static void
 alsa_destructor(ErlNifEnv* env, void* obj)
@@ -58,13 +59,70 @@ load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
   return 0;
 }
 
+static void set_volume(AudioCapture *capture, int level) {
+  snd_mixer_t *mixer=NULL;
+  
+  int err;
+  err=snd_mixer_open(&mixer,0);
+  if(err < 0) {
+    fprintf(stderr, "Could not open alsa mixer: %s\r\n",snd_strerror(err));
+    exit(1);
+  }
+  
+  char hw_id[100];
+  snprintf(hw_id, sizeof(hw_id), "hw:%d", capture->pcm_id);
+
+  if ((err = snd_mixer_attach (mixer, hw_id)) < 0){
+		fprintf(stderr, "Could not attach mixer to card(%s): %s\r\n", hw_id, snd_strerror(err));
+		snd_mixer_close(mixer);
+    exit(1);
+	}
+	if ((err = snd_mixer_selem_register (mixer, NULL, NULL)) < 0){
+		fprintf(stderr, "snd_mixer_selem_register: %s\r\n",snd_strerror(err));
+		snd_mixer_close(mixer);
+		exit(1);
+	}
+	if ((err = snd_mixer_load (mixer)) < 0){
+		fprintf(stderr, "snd_mixer_load: %s\r\n",snd_strerror(err));
+		snd_mixer_close(mixer);
+		exit(1);
+	}
+	
+	snd_mixer_elem_t *elem;
+	elem = snd_mixer_first_elem(mixer);
+	
+	while(elem) {
+    const char *elemname = snd_mixer_selem_get_name(elem);
+    if(strcmp(elemname, "Capture") && strcmp(elemname, "Mic")) {
+      fprintf(stderr, "Skip setting volume for %s\r\n", elemname);
+      elem=snd_mixer_elem_next(elem);
+      continue;
+    }
+  	if (snd_mixer_selem_has_capture_volume(elem)){
+      fprintf(stderr, "Set volume for %s\r\n", elemname);
+    	long sndMixerPMin;
+    	long sndMixerPMax;
+      long newvol;
+    	snd_mixer_selem_get_playback_volume_range(elem, &sndMixerPMin, &sndMixerPMax);
+    	newvol=(((sndMixerPMax-sndMixerPMin)*level)/100)+sndMixerPMin;
+      snd_mixer_selem_set_capture_volume_all(elem,newvol);
+      elem=snd_mixer_elem_next(elem);
+  	} else {
+      fprintf(stderr, "Can't set capture volume\r\n");
+      exit(1);
+  	}
+	}
+}
 
 
 void *capture_thread(void *data) {
   AudioCapture *capture = (AudioCapture *)data;
   // enif_keep_resource(capture);
   
-  capture->pcm_name = detect_pcm();
+  detect_pcm(capture);
+  
+  set_volume(capture, 100);
+  
   snd_pcm_open(&capture->handle, capture->pcm_name, SND_PCM_STREAM_CAPTURE, 0);
   if(!capture->handle) {
     fprintf(stderr, "No PCM!!\r\n");
@@ -152,7 +210,7 @@ void *capture_thread(void *data) {
   return 0;
 }
 
-char *detect_pcm() {
+void detect_pcm(AudioCapture *capture) {
   void **hints, **n;
   char *name, *desc, *io;
   
@@ -160,12 +218,14 @@ char *detect_pcm() {
   n = hints;
   
   char *detected_name = NULL;
+  int pcm_id = 0;
   
   while(*n && !detected_name) {
 		io = snd_device_name_get_hint(*n, "IOID");
 		if(!io || strcmp(io, "Input")) {
       if(io) free(io);
       n++;
+      pcm_id++;
       continue;
 		}
     name = snd_device_name_get_hint(*n, "NAME");
@@ -180,7 +240,10 @@ char *detect_pcm() {
   }
   
   snd_device_name_free_hint(hints);
-  return detected_name;
+  // This is so for USB
+  capture->pcm_id = 1;
+  
+  capture->pcm_name = detected_name;
 }
 
 static ERL_NIF_TERM
