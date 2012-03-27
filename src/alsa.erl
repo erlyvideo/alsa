@@ -15,7 +15,7 @@ start(Rate, Channels) ->
   Capture = real_start(Rate, Channels),
   {ok, Capture}.
 
-real_start(Rate, Channels) -> erlang:error(nif_not_loaded).
+real_start(_Rate, _Channels) -> erlang:error(nif_not_loaded).
 
 stop(_Capture) ->
   erlang:error(not_implemented).
