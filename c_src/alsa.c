@@ -25,7 +25,7 @@ typedef struct
     char *pcm_name;
     int pcm_id;
     snd_pcm_t *handle;
-    // int selectedDevice;
+    int selected_device;
     int running;
     ErlNifPid owner_pid;
     ErlNifTid tid;
@@ -218,22 +218,24 @@ void detect_pcm(AudioCapture *capture) {
   n = hints;
   
   char *detected_name = NULL;
+    
   int pcm_id = 0;
+  fprintf(stderr, "Selecting (%d)\r\n", capture->selected_device);
   
   while(*n && !detected_name) {
 		io = snd_device_name_get_hint(*n, "IOID");
-		if(!io || strcmp(io, "Input")) {
+    if(!io || strcmp(io, "Input")) {
       if(io) free(io);
       n++;
       pcm_id++;
       continue;
-		}
+    }
     name = snd_device_name_get_hint(*n, "NAME");
-		desc = snd_device_name_get_hint(*n, "DESC");
-		if(strstr(desc, "USB") && strstr(desc, "Default Audio")) {
+    desc = snd_device_name_get_hint(*n, "DESC");
+    if((capture->selected_device < 0 && strstr(desc, "USB") && strstr(desc, "Default Audio")) || capture->selected_device == pcm_id) {
       detected_name = (char *)malloc(strlen(name) + 1);
       strcpy(detected_name, name);
-		}
+    }
     free(name);
     free(desc);
     n++;
@@ -241,8 +243,9 @@ void detect_pcm(AudioCapture *capture) {
   
   snd_device_name_free_hint(hints);
   // This is so for USB
-  capture->pcm_id = 1;
+  //capture->pcm_id = 1;
   
+  fprintf(stderr, "Selected (%d)\r\n", pcm_id);
   capture->pcm_name = detected_name;
 }
 
@@ -250,9 +253,13 @@ static ERL_NIF_TERM
 alsa_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   int sample_rate, channels;
+  int selected_device = -1;
   
   enif_get_int(env, argv[0], &sample_rate);
   enif_get_int(env, argv[1], &channels);
+  if(argc > 2) {
+    enif_get_int(env, argv[2], &selected_device);
+  }
 
   // selectedDevice = dump_audio_info(selectedDevice);
 
@@ -262,6 +269,7 @@ alsa_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
   capture->sample_rate = sample_rate;
   capture->channels = channels;
   capture->frame_size = capture->channels*2*1024;
+  capture->selected_device = selected_device;
 
   
   enif_self(env, &capture->owner_pid);
@@ -299,7 +307,8 @@ alsa_stop(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
 static ErlNifFunc alsa_funcs[] =
 {
-    {"real_start", 2, alsa_init},
+//    {"real_start", 2, alsa_init},
+    {"real_start", 3, alsa_init},
     {"stop", 1, alsa_stop}
 };
 
