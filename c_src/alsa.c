@@ -98,20 +98,20 @@ static void set_volume(AudioCapture *capture, int level) {
       elem=snd_mixer_elem_next(elem);
       continue;
     }
-  	if (snd_mixer_selem_has_capture_volume(elem)){
+    if (snd_mixer_selem_has_capture_volume(elem)){
       fprintf(stderr, "Set volume for %s\r\n", elemname);
-    	long sndMixerPMin;
-    	long sndMixerPMax;
+      long sndMixerPMin;
+      long sndMixerPMax;
       long newvol;
-    	snd_mixer_selem_get_playback_volume_range(elem, &sndMixerPMin, &sndMixerPMax);
-    	newvol=(((sndMixerPMax-sndMixerPMin)*level)/100)+sndMixerPMin;
+      snd_mixer_selem_get_playback_volume_range(elem, &sndMixerPMin, &sndMixerPMax);
+      newvol=(((sndMixerPMax-sndMixerPMin)*level)/100)+sndMixerPMin;
       snd_mixer_selem_set_capture_volume_all(elem,newvol);
       elem=snd_mixer_elem_next(elem);
-  	} else {
-      fprintf(stderr, "Can't set capture volume\r\n");
+    } else {
+      fprintf(stderr, "Can't set capture volume for '%s'\r\n", elemname);
       exit(1);
-  	}
-	}
+    }
+  }
 }
 
 
